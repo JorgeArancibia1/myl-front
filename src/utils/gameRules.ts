@@ -605,6 +605,16 @@ export function exileableAllyExists(players: Record<PlayerId, PlayerState>): boo
   );
 }
 
+/**
+ * 'revela_juega_tipo' (Francotirador): al jugarse, su dueño elige un tipo (Aliado
+ * / Tótem / Arma) y muestra el tope de su Castillo hasta encontrar una carta de
+ * ese tipo; la juega sin pagar su Coste y pone las reveladas antes en el
+ * Cementerio (si no aparece ninguna, todo el mazo se bota → derrota).
+ */
+export function hasSniperReveal(card: Card): boolean {
+  return card.habilidadesEspeciales?.includes('revela_juega_tipo') ?? false;
+}
+
 /** Oros mínimos (Reserva + Oro Pagado) para jugar gratis con 'gratis_si_5_oros'. */
 export const FREE_IF_GOLD_MIN = 5;
 

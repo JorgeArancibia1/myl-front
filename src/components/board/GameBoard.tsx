@@ -66,12 +66,14 @@ export function GameBoard() {
   const pendingSelfRegroup = useGameStore((s) => s.pendingSelfRegroup);
   const pendingMillChoice = useGameStore((s) => s.pendingMillChoice);
   const pendingReplicaChoice = useGameStore((s) => s.pendingReplicaChoice);
+  const pendingSniperChoice = useGameStore((s) => s.pendingSniperChoice);
+  const sniperEquipTargeting = useTargetingStore((s) => s.sniperEquip);
   const responseWindow = useGameStore((s) => s.responseWindow);
   const { discardFromHand, respondWithAnnul, passResponse, closeResponseWindow, resolveShuffleChoice,
     resolveSwapChoice, resolveTypeChoice, resolvePatriotaTrigger, pickPatriotaGraveyardCard,
     discardRivalTalisman, tutorCopyFromZone, cancelCopyTutor,
     resolveSelfSummon, cancelSelfSummon, resolveFinalDraw, resolveAnnulRecover, resolveSelfRegroup,
-    resolveMillChoice, resolveReplicaChoice,
+    resolveMillChoice, resolveReplicaChoice, resolveSniperChoice, cancelSniperEquip,
     playCard: playCardAction } = useGameActions();
   const pendingSwapChoice = useGameStore((s) => s.pendingSwapChoice);
   const pendingTypeChoice = useGameStore((s) => s.pendingTypeChoice);
@@ -831,6 +833,45 @@ export function GameBoard() {
           </div>
         );
       })()}
+
+      {pendingSniperChoice && (!isOnline || mySeat === pendingSniperChoice.playerId) && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3">
+          <div className="w-full max-w-sm bg-slate-900 border border-amber-500/40 rounded-2xl p-4 sm:p-6 shadow-2xl text-center">
+            <div className="text-amber-300 text-xs uppercase tracking-widest font-bold">
+              {pendingSniperChoice.cardName}
+            </div>
+            <p className="text-slate-300 text-sm mt-2 mb-4">
+              Elige un tipo: se mostrará el tope de tu Castillo hasta encontrar uno y se jugará gratis.
+            </p>
+            <div className="flex gap-2">
+              {(['aliado', 'totem', 'arma'] as const).map((t) => (
+                <Button
+                  key={t}
+                  variant="primary"
+                  fullWidth
+                  onClick={() => resolveSniperChoice(t, pendingSniperChoice.playerId)}
+                >
+                  {t === 'aliado' ? 'Aliado' : t === 'totem' ? 'Tótem' : 'Arma'}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {sniperEquipTargeting && (!isOnline || mySeat === sniperEquipTargeting.playerId) && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-yellow-500/50 rounded-full px-4 py-2 flex items-center gap-3 shadow-xl">
+          <span className="text-xs text-yellow-300 font-bold">
+            Elige un Aliado tuyo para equipar {sniperEquipTargeting.arma.nombre}
+          </span>
+          <button
+            onClick={() => cancelSniperEquip(sniperEquipTargeting.playerId)}
+            className="text-xs text-slate-400 hover:text-white underline"
+          >
+            Cancelar (al Cementerio)
+          </button>
+        </div>
+      )}
 
       {pendingReplicaChoice && (!isOnline || mySeat === pendingReplicaChoice.playerId) && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3">

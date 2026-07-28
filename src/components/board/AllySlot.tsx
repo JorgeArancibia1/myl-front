@@ -50,7 +50,7 @@ export function AllySlot({ ally, weapons, playerId, isOpponent = false, size = '
   const [deckSearchOpen, setDeckSearchOpen] = useState(false);
   const { equipWeapon, summonCaudilloFromDeck, weakenAlly, millDestroyAlly, swapControl,
     playRecycledTalisman, activateMillGold, chooseRaceSuppress, equipWeaponFromZone,
-    destroyNonGoldCard, exileTargetCard, destroyDeclarativeTarget, buffTargetAlly, exileAllyDrawTarget, activateDeclarativeAbility, summonDeclarativeFromZone } = useGameActions();
+    destroyNonGoldCard, exileTargetCard, destroyDeclarativeTarget, buffTargetAlly, exileAllyDrawTarget, resolveSniperEquip, activateDeclarativeAbility, summonDeclarativeFromZone } = useGameActions();
   const [recycleOpen, setRecycleOpen] = useState(false);
   const [razaPickerOpen, setRazaPickerOpen] = useState(false);
   // Habilidad declarativa 'invocar' con selección en curso (o null).
@@ -91,9 +91,15 @@ export function AllySlot({ ally, weapons, playerId, isOpponent = false, size = '
   const buffTargeting = useTargetingStore((s) => s.buffTarget);
   // 'destierra_aliado_roba' (Escape): elige un Aliado para desterrar + robar.
   const exileAllyDrawTargeting = useTargetingStore((s) => s.exileAllyDraw);
+  // Francotirador (arma normal encontrada): elige a qué Aliado propio equiparla.
+  const sniperEquipTargetingRaw = useTargetingStore((s) => s.sniperEquip);
+  const sniperEquipTargeting =
+    sniperEquipTargetingRaw && sniperEquipTargetingRaw.playerId === playerId && !isOpponent
+      ? sniperEquipTargetingRaw
+      : null;
   const cancelTargeting = useTargetingStore((s) => s.cancel);
   const anyTargeting =
-    weakenTargeting ?? destroyTargeting ?? swapTargeting ?? equipTargeting ?? destroyAnyTargeting ?? exileAnyTargeting ?? declDestroyTargeting ?? buffTargeting ?? exileAllyDrawTargeting;
+    weakenTargeting ?? destroyTargeting ?? swapTargeting ?? equipTargeting ?? destroyAnyTargeting ?? exileAnyTargeting ?? declDestroyTargeting ?? buffTargeting ?? exileAllyDrawTargeting ?? sniperEquipTargeting;
 
   const isMyTurn = turn.currentPlayer === playerId && !isOpponent;
 
@@ -287,7 +293,7 @@ export function AllySlot({ ally, weapons, playerId, isOpponent = false, size = '
           {anyTargeting && (
             <div
               className={`absolute -inset-1 rounded-xl ring-2 animate-pulse pointer-events-none z-30 ${
-                swapTargeting || equipTargeting
+                swapTargeting || equipTargeting || sniperEquipTargeting
                   ? 'ring-yellow-400'
                   : exileAnyTargeting
                   ? 'ring-purple-400'
@@ -373,6 +379,8 @@ export function AllySlot({ ally, weapons, playerId, isOpponent = false, size = '
                 ? () => buffTargetAlly(ally.instanceId, playerId, buffTargeting.playerId)
                 : exileAllyDrawTargeting
                 ? () => exileAllyDrawTarget(ally.instanceId, playerId, exileAllyDrawTargeting.playerId)
+                : sniperEquipTargeting
+                ? () => resolveSniperEquip(ally.instanceId, playerId)
                 : () => setDetailCard(ally)
             }
             dragPayload={

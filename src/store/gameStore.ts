@@ -57,6 +57,7 @@ import {
   effectiveReplicaCost,
   isExileableAlly,
   exileableAllyExists,
+  hasSniperReveal,
   totalAlliesInPlay,
   hasCombatExileAll,
   hasCombatExilePay,
@@ -410,6 +411,16 @@ function maybeTalismanBounceMill(card: Card, playerId: PlayerId): void {
 }
 
 /**
+ * 'revela_juega_tipo' (Francotirador): al jugar el talismán, abre el modal para
+ * elegir el tipo (aliado/totem/arma) a buscar en el tope del Castillo.
+ */
+function maybeTalismanSniper(card: Card, playerId: PlayerId): void {
+  if (!hasSniperReveal(card)) return;
+  if (useGameStore.getState().isGameOver) return;
+  useGameStore.setState({ pendingSniperChoice: { playerId, cardName: card.nombre } });
+}
+
+/**
  * 'destierra_aliado_roba' (Escape): al jugar el talismán, ofrece la decisión de
  * Réplica (pagar N Oros para duplicar) si la carta la tiene y el jugador puede
  * pagarla; si no, inicia directamente el destierro+robo con 1 resolución. El
@@ -531,6 +542,7 @@ export function buildInitialState(
     pendingSelfRegroup: null,
     pendingMillChoice: null,
     pendingReplicaChoice: null,
+    pendingSniperChoice: null,
     responseWindow: null,
     fxLightning: null,
     gameLog: [
@@ -828,6 +840,15 @@ interface GameActions {
    * quedan resoluciones (Réplica) y hay Aliados, continúa el targeting.
    */
   exileAllyDrawTarget: (targetInstanceId: string, targetOwnerId: PlayerId, playerId: PlayerId) => void;
+  /**
+   * 'revela_juega_tipo' (Francotirador): resuelve la elección de tipo — muestra
+   * el tope del Castillo hasta una carta del tipo, la juega gratis y bota las
+   * reveladas antes al Cementerio (arma normal → targeting de portador).
+   */
+  resolveSniperChoice: (tipo: 'aliado' | 'totem' | 'arma', playerId: PlayerId) => void;
+  /** Francotirador: equipa el arma encontrada al Aliado objetivo (o al cancelar → Cementerio). */
+  resolveSniperEquip: (allyInstanceId: string, playerId: PlayerId) => void;
+  cancelSniperEquip: (playerId: PlayerId) => void;
   /** Replace the whole game state (online sync). */
   hydrateState: (state: GameState) => void;
   addLog: (msg: string, type?: GameLogEntry['type']) => void;
@@ -1035,6 +1056,8 @@ export const useGameStore = create<GameStore>()(
         if (card.tipo === 'talisman') maybeTalismanBounceMill(card, playerId);
         // 'destierra_aliado_roba' (Escape): Réplica + destierro con robo.
         if (card.tipo === 'talisman') maybeTalismanReplicaExileDraw(card, playerId);
+        // 'revela_juega_tipo' (Francotirador): elige tipo y cava el Castillo.
+        if (card.tipo === 'talisman') maybeTalismanSniper(card, playerId);
 
         // 'barajar_mano_roba8': al entrar en juego, su dueño decide si baraja
         // su mano en el Castillo y roba 8.
@@ -2379,6 +2402,7 @@ export const useGameStore = create<GameStore>()(
         if (card.tipo === 'talisman') maybeTalismanMillChoice(card, playerId);
         if (card.tipo === 'talisman') maybeTalismanBounceMill(card, playerId);
         if (card.tipo === 'talisman') maybeTalismanReplicaExileDraw(card, playerId);
+        if (card.tipo === 'talisman') maybeTalismanSniper(card, playerId);
 
         // 'barajar_mano_roba8': también aplica al entrar desde estas zonas.
         if (hasShuffleDraw(card)) {
@@ -3400,6 +3424,135 @@ export const useGameStore = create<GameStore>()(
         }
         const { isOver, winnerId } = checkGameOver(get().players);
         if (isOver) set({ isGameOver: true, winner: winnerId as PlayerId });
+      },
+
+      resolveSniperChoice: (tipo, playerId) => {
+        const { pendingSniperChoice, players } = get();
+        if (!pendingSniperChoice || pendingSniperChoice.playerId !== playerId) return;
+        const sourceName = pendingSniperChoice.cardName;
+        const player = players[playerId];
+        const matchIndex = player.deck.findIndex((c) => c.tipo === tipo);
+
+        // Sin coincidencia: se bota TODO el Mazo Castillo al Cementerio (derrota).
+        if (matchIndex === -1) {
+          const milled = createCardsInPlay(player.deck);
+          set((s) => ({
+            pendingSniperChoice: null,
+            players: {
+              ...s.players,
+              [playerId]: {
+                ...s.players[playerId],
+                deck: [],
+                graveyard: [...s.players[playerId].graveyard, ...milled],
+                life: 0,
+              },
+            },
+          }));
+          get().addLog(
+            `${sourceName}: no había ningún ${tipo} — todo el Mazo Castillo (${milled.length}) va al Cementerio.`,
+            'action',
+          );
+          const { isOver, winnerId } = checkGameOver(get().players);
+          if (isOver) set({ isGameOver: true, winner: winnerId as PlayerId });
+          return;
+        }
+
+        const before = createCardsInPlay(player.deck.slice(0, matchIndex));
+        const match = player.deck[matchIndex];
+        const rest = player.deck.slice(matchIndex + 1);
+        const played = createCardInPlay(match);
+        const isMachineryWeapon = match.tipo === 'arma' && hasMachinery(match);
+        const hasAllyToEquip = player.defenseField.some((c) => c.tipo === 'aliado');
+        const armaNeedsTarget = match.tipo === 'arma' && !isMachineryWeapon;
+
+        set((s) => {
+          const p = s.players[playerId];
+          const base: PlayerState = {
+            ...p,
+            deck: rest,
+            life: rest.length,
+            graveyard: [...p.graveyard, ...before],
+          };
+          if (match.tipo === 'aliado') {
+            base.defenseField = [...base.defenseField, { ...played, summonedThisTurn: true }];
+          } else if (match.tipo === 'totem' || isMachineryWeapon) {
+            base.supportField = [...base.supportField, played];
+          } else if (armaNeedsTarget && !hasAllyToEquip) {
+            // Arma sin portador legal → al Cementerio (no entra en juego).
+            base.graveyard = [...base.graveyard, played];
+          }
+          // Arma normal con portador: se juega en el targeting (no se coloca aún).
+          return { pendingSniperChoice: null, players: { ...s.players, [playerId]: base } };
+        });
+
+        get().addLog(
+          `${sourceName}: muestra ${before.length + 1} carta(s); juega ${match.nombre} (${tipo}) sin pagar su Coste; ${before.length} al Cementerio.`,
+          'action',
+        );
+
+        if (match.tipo === 'aliado') {
+          // Efectos de entrada del Aliado jugado (misma secuencia que playCard).
+          maybeDrawOnEnter(played, playerId);
+          maybeTriggerPatriotaEnter(played, playerId);
+          maybeSelfSummon(played, playerId);
+          maybeRegroup3OnEnter(played, playerId);
+          runDeclarativeAbilities(played, playerId, 'entra_juego');
+          maybeBuffTargetOnEnter(played, playerId);
+          set((s) => ({ players: reapplyCostOneSuppression(s.players) }));
+        } else if (match.tipo === 'totem') {
+          runDeclarativeAbilities(played, playerId, 'entra_juego');
+          if (hasTypeTax(played)) {
+            set({ pendingTypeChoice: { playerId, cardInstanceId: played.instanceId, cardName: played.nombre } });
+          }
+        } else if (armaNeedsTarget && hasAllyToEquip) {
+          useTargetingStore.getState().startSniperEquip(playerId, played);
+          get().addLog(`${sourceName}: elige a qué Aliado equipar ${match.nombre}.`, 'action');
+        }
+
+        const { isOver, winnerId } = checkGameOver(get().players);
+        if (isOver) set({ isGameOver: true, winner: winnerId as PlayerId });
+      },
+
+      resolveSniperEquip: (allyInstanceId, playerId) => {
+        const targeting = useTargetingStore.getState().sniperEquip;
+        if (!targeting || targeting.playerId !== playerId) return;
+        const arma = targeting.arma;
+        const player = get().players[playerId];
+        const ally = player.defenseField.find((c) => c.instanceId === allyInstanceId);
+        if (!ally) return;
+        const existing = weaponsOf(player, allyInstanceId);
+        const unlocked = weaponLimitUnlocked(ally, player);
+        const newWeapons = unlocked ? [...existing, arma] : [arma];
+        const displaced = !unlocked && existing.length > 0 ? existing : [];
+        set((s) => {
+          const p = s.players[playerId];
+          return {
+            players: {
+              ...s.players,
+              [playerId]: {
+                ...p,
+                equippedWeapons: { ...p.equippedWeapons, [allyInstanceId]: newWeapons },
+                graveyard: [...p.graveyard, ...displaced],
+              },
+            },
+          };
+        });
+        useTargetingStore.getState().cancel();
+        get().addLog(`${player.name} equipa ${arma.nombre} a ${ally.nombre}.`, 'action');
+      },
+
+      cancelSniperEquip: (playerId) => {
+        const targeting = useTargetingStore.getState().sniperEquip;
+        if (!targeting || targeting.playerId !== playerId) return;
+        const arma = targeting.arma;
+        set((s) => ({
+          players: {
+            ...s.players,
+            [playerId]: { ...s.players[playerId], graveyard: [...s.players[playerId].graveyard, arma] },
+          },
+        }));
+        useTargetingStore.getState().cancel();
+        get().addLog(`${get().players[playerId].name}: ${arma.nombre} no se equipó y va al Cementerio.`, 'system');
       },
 
       resolveTypeChoice: (tipo, playerId) => {

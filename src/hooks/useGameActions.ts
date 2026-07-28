@@ -52,6 +52,9 @@ export function useGameActions() {
   const resolveMillChoice = useGameStore((s) => s.resolveMillChoice);
   const resolveReplicaChoice = useGameStore((s) => s.resolveReplicaChoice);
   const exileAllyDrawTarget = useGameStore((s) => s.exileAllyDrawTarget);
+  const resolveSniperChoice = useGameStore((s) => s.resolveSniperChoice);
+  const resolveSniperEquip = useGameStore((s) => s.resolveSniperEquip);
+  const cancelSniperEquip = useGameStore((s) => s.cancelSniperEquip);
   const equipWeaponFromZone = useGameStore((s) => s.equipWeaponFromZone);
   const passResponse = useGameStore((s) => s.passResponse);
   const closeResponseWindow = useGameStore((s) => s.closeResponseWindow);
@@ -158,6 +161,9 @@ export function useGameActions() {
     resolveMillChoice: ownerGated<[PlayerId]>(resolveMillChoice),
     resolveReplicaChoice: ownerGated<[boolean]>(resolveReplicaChoice),
     exileAllyDrawTarget: guarded(exileAllyDrawTarget),
+    resolveSniperChoice: ownerGated<['aliado' | 'totem' | 'arma']>(resolveSniperChoice),
+    resolveSniperEquip: guarded(resolveSniperEquip),
+    cancelSniperEquip: ownerGated<[]>(cancelSniperEquip),
     swapControl: ownerGated<[string, string, PlayerId]>(swapControl),
     passResponse: ownerGated<[]>(passResponse),
     closeResponseWindow: () => {

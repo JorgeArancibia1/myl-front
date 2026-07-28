@@ -244,6 +244,15 @@ export interface GameState {
     cardName: string;
     cost: number;
   } | null;
+  /**
+   * Decisión de 'revela_juega_tipo' (Francotirador): al jugar la carta, su dueño
+   * elige un tipo (aliado / totem / arma) para buscar en el tope del Castillo.
+   * Se sincroniza online.
+   */
+  pendingSniperChoice: {
+    playerId: PlayerId;
+    cardName: string;
+  } | null;
   responseWindow: {
     /** Carta recién jugada (ya en su zona) que puede ser anulada */
     cardInstanceId: string;

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { PlayerId } from '@/types/game.types';
+import type { CardInPlay } from '@/types/card.types';
 
 /**
  * Targeting mode for abilities that pick a card on the board (e.g.
@@ -26,6 +27,8 @@ interface TargetingState {
   /** Active "exile an ally then draw" targeting ('destierra_aliado_roba', Escape).
    *  `remaining` = resoluciones que faltan (2 con Réplica pagada). */
   exileAllyDraw: { playerId: PlayerId; remaining: number } | null;
+  /** Active "equip found weapon to an ally" targeting (Francotirador, arma normal). */
+  sniperEquip: { playerId: PlayerId; arma: CardInPlay } | null;
   startWeaken: (sourceInstanceId: string, playerId: PlayerId) => void;
   startDestroy: (sourceInstanceId: string, playerId: PlayerId) => void;
   startSwap: (sourceInstanceId: string, playerId: PlayerId) => void;
@@ -35,10 +38,11 @@ interface TargetingState {
   startDeclDestroy: (sourceInstanceId: string, playerId: PlayerId, code: string) => void;
   startBuffTarget: (playerId: PlayerId, amount: number, scope: 'self' | 'opponent' | 'both') => void;
   startExileAllyDraw: (playerId: PlayerId, remaining: number) => void;
+  startSniperEquip: (playerId: PlayerId, arma: CardInPlay) => void;
   cancel: () => void;
 }
 
-const NONE = { weaken: null, destroy: null, swap: null, equip: null, destroyAny: null, exileAny: null, declDestroy: null, buffTarget: null, exileAllyDraw: null };
+const NONE = { weaken: null, destroy: null, swap: null, equip: null, destroyAny: null, exileAny: null, declDestroy: null, buffTarget: null, exileAllyDraw: null, sniperEquip: null };
 
 export const useTargetingStore = create<TargetingState>((set) => ({
   ...NONE,
@@ -58,5 +62,6 @@ export const useTargetingStore = create<TargetingState>((set) => ({
     set({ ...NONE, declDestroy: { sourceInstanceId, playerId, code } }),
   startBuffTarget: (playerId, amount, scope) => set({ ...NONE, buffTarget: { playerId, amount, scope } }),
   startExileAllyDraw: (playerId, remaining) => set({ ...NONE, exileAllyDraw: { playerId, remaining } }),
+  startSniperEquip: (playerId, arma) => set({ ...NONE, sniperEquip: { playerId, arma } }),
   cancel: () => set({ ...NONE }),
 }));
