@@ -58,6 +58,8 @@ import {
   isExileableAlly,
   exileableAllyExists,
   hasSniperReveal,
+  hasExileAllAllies,
+  isExileableByTalisman,
   totalAlliesInPlay,
   hasCombatExileAll,
   hasCombatExilePay,
@@ -408,6 +410,48 @@ function maybeTalismanBounceMill(card: Card, playerId: PlayerId): void {
   if (bounced > 0) {
     useGameStore.setState({ pendingMillChoice: { playerId, count: bounced, sourceName: card.nombre } });
   }
+}
+
+/**
+ * 'destierra_todos_aliados' (Cancha Rayada): al jugar el talismán, destierra
+ * TODOS los Aliados en juego de ambos jugadores que puedan ser desterrados por
+ * un talismán (respeta indesterrable/no_sale/solo_combate/inmunidad talismanes).
+ * Sus armas equipadas → Cementerio; se limpian debilitación/bonos temporales.
+ */
+function maybeTalismanExileAll(card: Card, playerId: PlayerId): void {
+  void playerId;
+  if (!hasExileAllAllies(card)) return;
+  const st = useGameStore.getState();
+  if (st.isGameOver) return;
+  let exiled = 0;
+  const patched: Record<string, PlayerState> = {};
+  for (const pid of ['player', 'opponent'] as PlayerId[]) {
+    const p = st.players[pid];
+    const toExile = [...p.defenseField, ...p.attackField].filter((c) => isExileableByTalisman(c, p));
+    if (toExile.length === 0) {
+      patched[pid] = p;
+      continue;
+    }
+    exiled += toExile.length;
+    const ids = new Set(toExile.map((c) => c.instanceId));
+    const orphanWeapons = toExile.flatMap((c) => weaponsOf(p, c.instanceId));
+    const restWeapons = { ...p.equippedWeapons };
+    for (const id of ids) delete restWeapons[id];
+    const tempBonuses = { ...p.weaponTempBonuses };
+    for (const id of ids) delete tempBonuses[id];
+    patched[pid] = {
+      ...p,
+      defenseField: p.defenseField.filter((c) => !ids.has(c.instanceId)),
+      attackField: p.attackField.filter((c) => !ids.has(c.instanceId)),
+      exile: [...p.exile, ...toExile],
+      graveyard: [...p.graveyard, ...orphanWeapons],
+      equippedWeapons: restWeapons,
+      weakenedAllies: p.weakenedAllies.filter((id) => !ids.has(id)),
+      weaponTempBonuses: tempBonuses,
+    };
+  }
+  useGameStore.setState({ players: { ...st.players, ...patched } });
+  useGameStore.getState().addLog(`${card.nombre}: ${exiled} Aliado(s) son desterrados.`, 'combat');
 }
 
 /**
@@ -1058,6 +1102,8 @@ export const useGameStore = create<GameStore>()(
         if (card.tipo === 'talisman') maybeTalismanReplicaExileDraw(card, playerId);
         // 'revela_juega_tipo' (Francotirador): elige tipo y cava el Castillo.
         if (card.tipo === 'talisman') maybeTalismanSniper(card, playerId);
+        // 'destierra_todos_aliados' (Cancha Rayada): destierro masivo.
+        if (card.tipo === 'talisman') maybeTalismanExileAll(card, playerId);
 
         // 'barajar_mano_roba8': al entrar en juego, su dueño decide si baraja
         // su mano en el Castillo y roba 8.
@@ -2403,6 +2449,7 @@ export const useGameStore = create<GameStore>()(
         if (card.tipo === 'talisman') maybeTalismanBounceMill(card, playerId);
         if (card.tipo === 'talisman') maybeTalismanReplicaExileDraw(card, playerId);
         if (card.tipo === 'talisman') maybeTalismanSniper(card, playerId);
+        if (card.tipo === 'talisman') maybeTalismanExileAll(card, playerId);
 
         // 'barajar_mano_roba8': también aplica al entrar desde estas zonas.
         if (hasShuffleDraw(card)) {

@@ -598,6 +598,22 @@ export function isExileableAlly(c: CardInPlay): boolean {
   );
 }
 
+/**
+ * 'destierra_todos_aliados' (Cancha Rayada): al jugarse, destierra TODOS los
+ * Aliados en juego de ambos jugadores. "No puede ser prevenido" NO ignora las
+ * protecciones: cada Aliado se evalúa y respeta Indesterrable / 'no_sale_del_juego'
+ * / 'solo_sale_combate' / Inmunidad a Talismanes (es un talismán).
+ */
+export function hasExileAllAllies(card: Card): boolean {
+  return card.habilidadesEspeciales?.includes('destierra_todos_aliados') ?? false;
+}
+
+/** ¿`c` (de `owner`) puede ser desterrado por un efecto de TALISMÁN? (además de
+ *  las protecciones de destierro, respeta la Inmunidad a Talismanes). */
+export function isExileableByTalisman(c: CardInPlay, owner: PlayerState): boolean {
+  return isExileableAlly(c) && !hasInmunidadTalismanesEffective(c, owner);
+}
+
 /** ¿Existe algún Aliado desterrable en juego (ambos jugadores)? */
 export function exileableAllyExists(players: Record<PlayerId, PlayerState>): boolean {
   return Object.values(players).some((p) =>
