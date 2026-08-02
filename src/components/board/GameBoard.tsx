@@ -23,7 +23,8 @@ import {
   ChevronRight, SkipForward, RefreshCw, Loader2, Settings, Flag, WifiOff, Sparkles,
 } from 'lucide-react';
 import { APP_VERSION } from '@/version';
-import { effectiveForce, hasAnnulResponse, hasImbloqueable, hasRelampago } from '@/utils/gameRules';
+import { effectiveForce, hasAnnulResponse, hasImbloqueable, hasRelampago, meetsDeclPlayCondition } from '@/utils/gameRules';
+import { getDeclAnnulResponse } from '@/utils/abilityRegistry';
 import { playLightningFx } from '@/utils/lightningFx';
 import { useTargetingStore } from '@/store/targetingStore';
 import type { PlayerId } from '@/types/game.types';
@@ -514,11 +515,14 @@ export function GameBoard() {
             </div>
           );
         }
-        // Respuestas jugables: talismanes de anulación (ventana de carta) y,
-        // en ventanas de efecto, también cartas a velocidad de respuesta.
+        // ¿La carta anula en respuesta? (keyword clásica o efecto declarativo).
+        const isAnnul = (c: typeof responder.hand[number]) =>
+          hasAnnulResponse(c) || getDeclAnnulResponse(c) != null;
+        // Respuestas jugables: talismanes de anulación (que cumplan su condición
+        // de juego) y, en ventanas de efecto, también cartas a velocidad de respuesta.
         const responses = responder.hand.filter(
           (c) =>
-            (hasAnnulResponse(c) ||
+            ((isAnnul(c) && meetsDeclPlayCondition(c, responder)) ||
               (effect && (hasRelampago(c) || (c.tipo === 'talisman' && c.habilidadesEspeciales?.includes('instantaneo'))))) &&
             c.coste <= responder.goldCount + responder.talismanGold,
         );
@@ -559,7 +563,7 @@ export function GameBoard() {
                       card={c}
                       size="sm"
                       onClick={() =>
-                        hasAnnulResponse(c)
+                        isAnnul(c)
                           ? respondWithAnnul(c.instanceId, responseWindow.responderId)
                           : playCardAction(c, responseWindow.responderId)
                       }

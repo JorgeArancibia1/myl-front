@@ -99,6 +99,35 @@ export function getDeclExile(
   return null;
 }
 
+/** Efecto declarativo `robar` que se dispara en `moment` (o null): cartas a robar. */
+export function getDeclDraw(
+  card: Card,
+  moment: import('@/types/ability.types').AbilityMoment,
+): number | null {
+  for (const { def } of getDeclarativeAbilitiesOf(card)) {
+    if (def.effect.kind === 'robar' && def.moments.includes(moment)) return Math.max(0, def.effect.count);
+  }
+  return null;
+}
+
+/** Efecto declarativo `anular_respuesta` de una carta (destino + robar) o null. */
+export function getDeclAnnulResponse(
+  card: Card,
+): { destino: 'removidas' | 'cementerio'; robar: { kind: 'fijo'; value: number } | { kind: 'coste_anulada' } } | null {
+  for (const { def } of getDeclarativeAbilitiesOf(card)) {
+    if (def.effect.kind === 'anular_respuesta') return { destino: def.effect.destino, robar: def.effect.robar };
+  }
+  return null;
+}
+
+/** Efecto declarativo `condicion_juego` de una carta (restricción de juego) o null. */
+export function getDeclPlayCondition(card: Card): { tipo: 'todos_aliados_raza'; raza: string } | null {
+  for (const { def } of getDeclarativeAbilitiesOf(card)) {
+    if (def.effect.kind === 'condicion_juego') return { tipo: def.effect.tipo, raza: def.effect.raza };
+  }
+  return null;
+}
+
 /**
  * Efecto declarativo `jugar_desde_zona` de una carta (propiedad pasiva): permite
  * jugarla desde la zona `from`; si `thenExile`, se destierra tras jugarse así.

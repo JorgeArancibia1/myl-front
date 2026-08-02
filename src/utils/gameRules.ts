@@ -1,6 +1,11 @@
 import type { CardInPlay, Card } from '@/types/card.types';
 import type { PlayerId, PlayerState, TurnState } from '@/types/game.types';
-import { getDeclarativeForceBuff, getDeclPlayFromZone, getDeclFreeCostMinGold } from '@/utils/abilityRegistry';
+import {
+  getDeclarativeForceBuff,
+  getDeclPlayFromZone,
+  getDeclFreeCostMinGold,
+  getDeclPlayCondition,
+} from '@/utils/abilityRegistry';
 
 export const INITIAL_HAND_SIZE = 5;
 export const MAX_GOLD_CARDS    = 15;
@@ -71,6 +76,12 @@ export function canPlayCard(
   // hay objetivo válido para revivir → injugable.
   if (hasCamuflaje(card) && !caudilloRevivableInGraveyard(player)) {
     return { allowed: false, reason: 'No hay un Aliado Caudillo de Coste ≤3 en tu Cementerio' };
+  }
+
+  // Efecto declarativo 'condicion_juego' (p.ej. Duelo a Siete Pasos: solo si
+  // todos tus Aliados son Caudillos).
+  if (!meetsDeclPlayCondition(card, player)) {
+    return { allowed: false, reason: 'No cumples la condición para jugar esta carta' };
   }
 
   // Los talismanes pueden pagarse también con oros virtuales 'oro_talismanes'.
@@ -595,6 +606,21 @@ export function effectiveReplicaCost(card: Card, player: PlayerState): number | 
  */
 export function hasExileAllyDraw(card: Card): boolean {
   return card.habilidadesEspeciales?.includes('destierra_aliado_roba') ?? false;
+}
+
+/**
+ * Efecto declarativo `condicion_juego`: ¿`player` cumple la condición para jugar
+ * `card`? Hoy: `todos_aliados_raza` = controla ≥1 Aliado y TODOS son de esa raza
+ * (sin verdad vacua: sin Aliados NO se cumple). Sin condición declarada = true.
+ */
+export function meetsDeclPlayCondition(card: Card, player: PlayerState): boolean {
+  const cond = getDeclPlayCondition(card);
+  if (!cond) return true;
+  if (cond.tipo === 'todos_aliados_raza') {
+    const allies = [...player.defenseField, ...player.attackField].filter((c) => c.tipo === 'aliado');
+    return allies.length > 0 && allies.every((a) => a.raza === cond.raza);
+  }
+  return true;
 }
 
 /** ¿`c` es un Aliado que puede ser desterrado? (respeta las protecciones). */

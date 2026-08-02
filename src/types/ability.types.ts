@@ -82,7 +82,10 @@ export type AbilityEffectKind =
   | 'buff_objetivo'
   | 'jugar_desde_zona'
   | 'coste_gratis_condicional'
-  | 'destierro';
+  | 'destierro'
+  | 'robar'
+  | 'anular_respuesta'
+  | 'condicion_juego';
 
 export const EFFECT_LABELS: Record<AbilityEffectKind, string> = {
   mover: 'Mover / Barajar cartas',
@@ -95,6 +98,9 @@ export const EFFECT_LABELS: Record<AbilityEffectKind, string> = {
   jugar_desde_zona: 'Poder jugar esta carta desde otra zona',
   coste_gratis_condicional: 'Jugar gratis si controlas X Oros',
   destierro: 'Desterrar cartas en juego (una o todas)',
+  robar: 'Robar cartas del Mazo Castillo',
+  anular_respuesta: 'Anular una carta al ser jugada (respuesta)',
+  condicion_juego: 'Condición para poder jugar esta carta',
 };
 
 /**
@@ -270,6 +276,39 @@ export interface ExileEffect {
   targetTipo: import('./card.types').CardType | null;
 }
 
+/**
+ * Efecto "robar": el jugador roba `count` cartas de su Mazo Castillo a la Mano.
+ * Amigable (equivale a `mover` deck→hand, pero visible como "Robar"). Fires en el
+ * momento elegido (p.ej. entra_juego para talismanes, o activable).
+ */
+export interface DrawEffect {
+  kind: 'robar';
+  count: number;
+}
+
+/**
+ * Efecto "anular_respuesta" (mecánica de respuesta, tipo counter): la carta se
+ * puede jugar en la ventana de respuesta para ANULAR la carta recién jugada por
+ * el rival; la anulada va a `destino` y el jugador roba `robar` cartas (fijo o
+ * = Coste de la anulada). Respeta las protecciones de anulación (annulBlockReason).
+ */
+export interface AnnulResponseEffect {
+  kind: 'anular_respuesta';
+  destino: 'removidas' | 'cementerio';
+  robar: { kind: 'fijo'; value: number } | { kind: 'coste_anulada' };
+}
+
+/**
+ * Efecto "condicion_juego" (propiedad pasiva): restringe cuándo se puede jugar la
+ * carta. `todos_aliados_raza`: solo si controlas ≥1 Aliado y TODOS son de `raza`.
+ * (`momento`/`modo` irrelevantes; lo consulta `canPlayCard`.)
+ */
+export interface PlayConditionEffect {
+  kind: 'condicion_juego';
+  tipo: 'todos_aliados_raza';
+  raza: string;
+}
+
 export type AbilityEffect =
   | MoveEffect
   | SummonEffect
@@ -280,7 +319,10 @@ export type AbilityEffect =
   | BuffTargetEffect
   | PlayFromZoneEffect
   | FreeCostEffect
-  | ExileEffect;
+  | ExileEffect
+  | DrawEffect
+  | AnnulResponseEffect
+  | PlayConditionEffect;
 
 /** Receta declarativa completa de una habilidad. */
 export interface AbilityDefinition {

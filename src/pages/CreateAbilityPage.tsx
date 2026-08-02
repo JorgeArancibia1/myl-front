@@ -101,6 +101,14 @@ export function CreateAbilityPage() {
   const [exileScope, setExileScope] = useState<'self' | 'opponent' | 'both'>('both');
   const [exileMass, setExileMass] = useState(false);
   const [exileTargetTipo, setExileTargetTipo] = useState<CardType | null>('aliado');
+  // Efecto 'robar': cuántas cartas.
+  const [drawCount, setDrawCount] = useState(1);
+  // Efecto 'anular_respuesta': destino de la anulada y robo.
+  const [annulDestino, setAnnulDestino] = useState<'removidas' | 'cementerio'>('cementerio');
+  const [annulRobarKind, setAnnulRobarKind] = useState<'fijo' | 'coste_anulada'>('fijo');
+  const [annulRobarValue, setAnnulRobarValue] = useState(1);
+  // Efecto 'condicion_juego': raza que deben ser todos tus Aliados.
+  const [condRaza, setCondRaza] = useState('Caudillo');
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
@@ -127,13 +135,16 @@ export function CreateAbilityPage() {
   const isPlayZone = effectKind === 'jugar_desde_zona';
   const isFreeCost = effectKind === 'coste_gratis_condicional';
   const isExile = effectKind === 'destierro';
-  // Efectos pasivos (propiedades): momento/modo irrelevantes.
-  const isPassive = isPlayZone || isFreeCost;
+  const isDraw = effectKind === 'robar';
+  const isAnnulResp = effectKind === 'anular_respuesta';
+  const isPlayCond = effectKind === 'condicion_juego';
+  // Efectos pasivos (propiedades / respuesta): momento/modo irrelevantes.
+  const isPassive = isPlayZone || isFreeCost || isAnnulResp || isPlayCond;
   const usesTargetFilters = effectKind === 'invocar' || isEnablePlay;
-  const needsFrom = !isRecoverSelf && !isBuffForce && !isDestroy && !isBuffObj && !isPassive && !isExile;
-  const needsTo = !isEnablePlay && !isBuffForce && !isDestroy && !isBuffObj && !isPassive && !isExile;
+  const needsFrom = !isRecoverSelf && !isBuffForce && !isDestroy && !isBuffObj && !isPassive && !isExile && !isDraw;
+  const needsTo = !isEnablePlay && !isBuffForce && !isDestroy && !isBuffObj && !isPassive && !isExile && !isDraw;
   const zonesOk =
-    isBuffForce || isDestroy || isBuffObj || isFreeCost || isExile
+    isBuffForce || isDestroy || isBuffObj || isFreeCost || isExile || isDraw
       ? true
       : isPlayZone
       ? playZoneFrom !== null
@@ -197,6 +208,25 @@ export function CreateAbilityPage() {
         ...base,
         effect: { kind: 'destierro', scope: exileScope, mass: exileMass, targetTipo: exileTargetTipo },
       };
+    }
+    if (effectKind === 'robar') {
+      return { ...base, effect: { kind: 'robar', count: Math.max(1, drawCount) } };
+    }
+    if (effectKind === 'anular_respuesta') {
+      return {
+        ...base,
+        effect: {
+          kind: 'anular_respuesta',
+          destino: annulDestino,
+          robar:
+            annulRobarKind === 'fijo'
+              ? { kind: 'fijo', value: Math.max(0, annulRobarValue) }
+              : { kind: 'coste_anulada' },
+        },
+      };
+    }
+    if (effectKind === 'condicion_juego') {
+      return { ...base, effect: { kind: 'condicion_juego', tipo: 'todos_aliados_raza', raza: condRaza.trim() || 'Caudillo' } };
     }
     if (effectKind === 'invocar') {
       return {
@@ -288,6 +318,11 @@ export function CreateAbilityPage() {
       setExileScope('both');
       setExileMass(false);
       setExileTargetTipo('aliado');
+      setDrawCount(1);
+      setAnnulDestino('cementerio');
+      setAnnulRobarKind('fijo');
+      setAnnulRobarValue(1);
+      setCondRaza('Caudillo');
     } catch (err) {
       const text =
         err instanceof ApiError
@@ -352,6 +387,16 @@ export function CreateAbilityPage() {
         exileScope === 'opponent' ? 'del rival' : exileScope === 'self' ? 'propias' : 'de ambos jugadores';
       return `${when}: ${modeText} desterrar ${exileMass ? `TODAS las ${queTipo} en juego` : `un(a) ${queTipo} en juego`} ${deQuien} (respeta protecciones/inmunidad a talismanes).`;
     }
+    if (isDraw) {
+      return `${when}: ${modeText} robar ${Math.max(1, drawCount)} carta(s) del Mazo Castillo.`;
+    }
+    if (isAnnulResp) {
+      const robo = annulRobarKind === 'fijo' ? `${Math.max(0, annulRobarValue)}` : 'tantas como el Coste de la anulada';
+      return `En la ventana de respuesta: anula la carta recién jugada (no-Oro), la envía ${annulDestino === 'cementerio' ? 'al Cementerio' : 'a Removidas'} y robas ${robo} carta(s). Respeta inanulable/inmunidades.`;
+    }
+    if (isPlayCond) {
+      return `Solo puedes jugar esta carta si controlas al menos un Aliado y todos son de raza ${condRaza.trim() || 'Caudillo'}.`;
+    }
     if (isEnablePlay) {
       const filtro = [
         summonRaza.trim() ? `raza ${summonRaza.trim()}` : null,
@@ -388,6 +433,7 @@ export function CreateAbilityPage() {
     destroyTargetTipo, destroyScope,
     isBuffObj, isPlayZone, isFreeCost, buffObjAmount, buffObjScope, playZoneFrom, playZoneExile, freeMinGold,
     isExile, exileScope, exileMass, exileTargetTipo,
+    isDraw, drawCount, isAnnulResp, annulDestino, annulRobarKind, annulRobarValue, isPlayCond, condRaza,
   ]);
 
   return (
@@ -669,6 +715,90 @@ export function CreateAbilityPage() {
                   Masivo: desterrar TODAS las que cumplan (si no, se elige una)
                 </label>
               </>
+            )}
+
+            {isDraw && (
+              <div>
+                <label className="text-[10px] uppercase tracking-wide text-slate-500 block mb-1">
+                  ¿Cuántas cartas robar del Mazo Castillo?
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={drawCount === 0 ? '' : String(drawCount)}
+                  placeholder="1"
+                  onChange={(e) => setDrawCount(Number(e.target.value.replace(/\D/g, '')) || 0)}
+                  className={`${inputCls} w-24`}
+                />
+              </div>
+            )}
+
+            {isAnnulResp && (
+              <>
+                <p className="text-[11px] text-slate-400">
+                  Propiedad de respuesta (tipo counter): esta carta se podrá jugar en la ventana de
+                  respuesta para ANULAR la carta que el rival acaba de jugar (no-Oro). Respeta
+                  Inanulable / inmunidades. (Momento/modo no aplican.)
+                </p>
+                <div>
+                  <label className="text-[10px] uppercase tracking-wide text-slate-500 block mb-1.5">
+                    La carta anulada va a…
+                  </label>
+                  <LabelPicker
+                    tone="amber"
+                    value={annulDestino}
+                    onChange={setAnnulDestino}
+                    options={[
+                      { value: 'cementerio', label: 'Cementerio' },
+                      { value: 'removidas', label: 'Removidas' },
+                    ]}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-wide text-slate-500 block mb-1.5">
+                    Robas…
+                  </label>
+                  <LabelPicker
+                    tone="sky"
+                    value={annulRobarKind}
+                    onChange={setAnnulRobarKind}
+                    options={[
+                      { value: 'fijo', label: 'Cantidad fija' },
+                      { value: 'coste_anulada', label: 'Tantas como el Coste de la anulada' },
+                    ]}
+                  />
+                  {annulRobarKind === 'fijo' && (
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={annulRobarValue === 0 ? '' : String(annulRobarValue)}
+                      placeholder="1"
+                      onChange={(e) => setAnnulRobarValue(Number(e.target.value.replace(/\D/g, '')) || 0)}
+                      className={`${inputCls} w-24 mt-2`}
+                    />
+                  )}
+                </div>
+              </>
+            )}
+
+            {isPlayCond && (
+              <div>
+                <p className="text-[11px] text-slate-400 mb-2">
+                  Propiedad pasiva: restringe cuándo se puede jugar la carta. Solo se podrá jugar si
+                  controlas al menos un Aliado y TODOS son de la raza indicada. (Momento/modo no aplican.)
+                </p>
+                <label className="text-[10px] uppercase tracking-wide text-slate-500 block mb-1">
+                  Raza que deben ser todos tus Aliados
+                </label>
+                <input
+                  value={condRaza}
+                  onChange={(e) => setCondRaza(e.target.value)}
+                  placeholder="Caudillo"
+                  className={`${inputCls} w-44`}
+                />
+              </div>
             )}
 
             {isBuffObj && (

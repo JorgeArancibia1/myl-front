@@ -12,6 +12,8 @@ import {
   getFaseFinalSelfMove,
   getDeclBuffTargetOnEnter,
   getDeclExile,
+  getDeclDraw,
+  getDeclAnnulResponse,
 } from '@/utils/abilityRegistry';
 import {
   runAbilityDefinition,
@@ -40,6 +42,7 @@ import {
   hasGoldTalismanAbility,
   ANNUL_TRIGGER_BONUS,
   annulBlockReason,
+  meetsDeclPlayCondition,
   controlsPatriota,
   hasAnnulTrigger,
   effectiveCost,
@@ -600,6 +603,28 @@ function maybeDeclExileOnEnter(card: Card, playerId: PlayerId): void {
     useGameStore.setState({ players: { ...st.players, ...patched } });
     useGameStore.getState().addLog(`${card.nombre}: ${exiled} carta(s) son desterradas.`, 'combat');
   }
+}
+
+/**
+ * Efecto declarativo `robar` al entrar en juego (constructor): el jugador roba N
+ * cartas de su Mazo Castillo a la Mano. Amigable (equivale a mover deck→mano).
+ */
+function maybeDeclDrawOnEnter(card: Card, playerId: PlayerId): void {
+  const n = getDeclDraw(card, 'entra_juego');
+  if (n == null || n <= 0) return;
+  const st = useGameStore.getState();
+  if (st.isGameOver) return;
+  const p = st.players[playerId];
+  const count = Math.min(n, p.deck.length);
+  if (count <= 0) return;
+  const { drawn, remaining } = drawCards(p.deck, count);
+  useGameStore.setState({
+    players: {
+      ...st.players,
+      [playerId]: { ...p, deck: remaining, hand: [...p.hand, ...drawn.map(createCardInPlay)], life: remaining.length },
+    },
+  });
+  useGameStore.getState().addLog(`${card.nombre}: ${p.name} roba ${count} carta(s) del Castillo.`, 'action');
 }
 
 function maybeSelfSummon(card: Card, playerId: PlayerId): void {
@@ -1251,6 +1276,7 @@ export const useGameStore = create<GameStore>()(
         runDeclarativeAbilities(card, playerId, 'entra_juego');
         maybeBuffTargetOnEnter(card, playerId);
         maybeDeclExileOnEnter(card, playerId);
+        maybeDeclDrawOnEnter(card, playerId);
 
         // 'busca_copia_entra' (Escudo Nacional Mercenario): al entrar, si hay
         // copias de esta misma carta en el Castillo o Cementerio, abrir la
@@ -2563,6 +2589,7 @@ export const useGameStore = create<GameStore>()(
         runDeclarativeAbilities(card, playerId, 'entra_juego');
         maybeBuffTargetOnEnter(card, playerId);
         maybeDeclExileOnEnter(card, playerId);
+        maybeDeclDrawOnEnter(card, playerId);
         set((s) => ({ players: reapplyCostOneSuppression(s.players) }));
       },
 
@@ -3988,7 +4015,13 @@ export const useGameStore = create<GameStore>()(
         const responseCard = responder.hand.find(
           (c) => c.instanceId === responseCardInstanceId
         );
-        if (!responseCard || responseCard.tipo !== 'talisman' || !hasAnnulResponse(responseCard)) {
+        const declAnnul = getDeclAnnulResponse(responseCard);
+        if (!responseCard || responseCard.tipo !== 'talisman' || (!hasAnnulResponse(responseCard) && !declAnnul)) {
+          return;
+        }
+        // Condición de juego de la carta de respuesta (p.ej. Duelo #35: todos Caudillos).
+        if (!meetsDeclPlayCondition(responseCard, responder)) {
+          get().addLog(`No cumples la condición para jugar ${responseCard.nombre}.`, 'error');
           return;
         }
         const responseCost = effectiveCost(responseCard, players);
@@ -4023,21 +4056,26 @@ export const useGameStore = create<GameStore>()(
         const paid = responder.gold.slice(responder.gold.length - fromCards);
         const remainingGold = responder.gold.slice(0, responder.gold.length - fromCards);
 
-        // Robo: tantas cartas como el coste de la carta anulada.
-        const drawCount = Math.min(target.coste, responder.deck.length);
+        // Robo: por defecto = Coste de la anulada; declarativa puede pedir fijo.
+        const drawWanted =
+          declAnnul?.robar.kind === 'fijo' ? declAnnul.robar.value : target.coste;
+        const drawCount = Math.min(drawWanted, responder.deck.length);
         const { drawn, remaining: newDeck } = drawCards(responder.deck, drawCount);
+        // Destino de la anulada: Removidas por defecto; declarativa puede pedir Cementerio.
+        const toGrave = declAnnul?.destino === 'cementerio';
 
         set((s) => {
           const r = s.players[playerId];
           const o = s.players[responseWindow.cardOwnerId];
           const ownerPatch = {
-            // La carta anulada se REMUEVE del juego (zona R), venga de donde venga.
+            // La carta anulada sale del juego: a Removidas (por defecto) o al Cementerio.
             defenseField: o.defenseField.filter((c) => c.instanceId !== target.instanceId),
-            graveyard: o.graveyard.filter((c) => c.instanceId !== target.instanceId),
-            removed: [
-              ...o.removed.filter((c) => c.instanceId !== target.instanceId),
-              target,
-            ],
+            graveyard: toGrave
+              ? [...o.graveyard.filter((c) => c.instanceId !== target.instanceId), target]
+              : o.graveyard.filter((c) => c.instanceId !== target.instanceId),
+            removed: toGrave
+              ? o.removed.filter((c) => c.instanceId !== target.instanceId)
+              : [...o.removed.filter((c) => c.instanceId !== target.instanceId), target],
           };
           const responderPatch = {
             hand: [
@@ -4067,7 +4105,7 @@ export const useGameStore = create<GameStore>()(
         });
 
         get().addLog(
-          `${responder.name} responde con ${responseCard.nombre}: ${target.nombre} es anulada y removida del juego. ${responder.name} roba ${drawCount} carta(s).`,
+          `${responder.name} responde con ${responseCard.nombre}: ${target.nombre} es anulada y va ${toGrave ? 'al Cementerio' : 'a Removidas'}. ${responder.name} roba ${drawCount} carta(s).`,
           'combat'
         );
 
