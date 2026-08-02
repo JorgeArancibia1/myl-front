@@ -28,6 +28,8 @@ export function snapshotGameState(): GameState {
     pendingSelfRegroup: s.pendingSelfRegroup,
     pendingMillChoice: s.pendingMillChoice,
     pendingReplicaChoice: s.pendingReplicaChoice,
+    pendingCamuflajeSummon: s.pendingCamuflajeSummon,
+    pendingCamuflajeTutor: s.pendingCamuflajeTutor,
     pendingSniperChoice: s.pendingSniperChoice,
     responseWindow: s.responseWindow,
     fxLightning: s.fxLightning,

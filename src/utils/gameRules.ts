@@ -67,6 +67,12 @@ export function canPlayCard(
     return { allowed: false, reason: 'No hay ningún Aliado en juego para desterrar' };
   }
 
+  // 'camuflaje_revive_tutor' (Camuflaje): sin un Caudillo ≤3 en el Cementerio no
+  // hay objetivo válido para revivir → injugable.
+  if (hasCamuflaje(card) && !caudilloRevivableInGraveyard(player)) {
+    return { allowed: false, reason: 'No hay un Aliado Caudillo de Coste ≤3 en tu Cementerio' };
+  }
+
   // Los talismanes pueden pagarse también con oros virtuales 'oro_talismanes'.
   const available =
     card.tipo === 'talisman' ? player.goldCount + player.talismanGold : player.goldCount;
@@ -619,6 +625,20 @@ export function exileableAllyExists(players: Record<PlayerId, PlayerState>): boo
   return Object.values(players).some((p) =>
     [...p.defenseField, ...p.attackField].some(isExileableAlly),
   );
+}
+
+/**
+ * 'camuflaje_revive_tutor' (Camuflaje): al jugarse, revive un Aliado Caudillo de
+ * Coste ≤ 3 desde el Cementerio (obligatorio; sin objetivo válido es injugable);
+ * si se pagó el Coste de Réplica, además puede buscar un Talismán en el Castillo.
+ */
+export function hasCamuflaje(card: Card): boolean {
+  return card.habilidadesEspeciales?.includes('camuflaje_revive_tutor') ?? false;
+}
+
+/** ¿Hay un Aliado Caudillo de Coste ≤ 3 en el Cementerio de `player`? (objetivo de Camuflaje). */
+export function caudilloRevivableInGraveyard(player: PlayerState): boolean {
+  return player.graveyard.some((c) => c.tipo === 'aliado' && c.raza === 'Caudillo' && c.coste <= 3);
 }
 
 /**

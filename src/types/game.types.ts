@@ -243,7 +243,16 @@ export interface GameState {
     playerId: PlayerId;
     cardName: string;
     cost: number;
+    /** Qué carta resolver tras la decisión de Réplica. */
+    kind: 'escape' | 'camuflaje';
   } | null;
+  /**
+   * Camuflaje — paso 1: elegir el Aliado Caudillo ≤3 del Cementerio a revivir.
+   * `replicaPaid` indica si tras revivir se ofrece el tutor de Talismán.
+   */
+  pendingCamuflajeSummon: { playerId: PlayerId; replicaPaid: boolean } | null;
+  /** Camuflaje — paso 2 (solo si pagó Réplica): buscar un Talismán en el Castillo. */
+  pendingCamuflajeTutor: { playerId: PlayerId } | null;
   /**
    * Decisión de 'revela_juega_tipo' (Francotirador): al jugar la carta, su dueño
    * elige un tipo (aliado / totem / arma) para buscar en el tope del Castillo.

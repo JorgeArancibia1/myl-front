@@ -8,6 +8,7 @@ import { useOnlineStore } from '@/store/onlineStore';
 import { apiGameSyncService } from '@/services/api/gameSyncService';
 import { PlayerArea } from './PlayerArea';
 import { CardView } from '@/components/cards/CardView';
+import { DeckSearchModal } from './DeckSearchModal';
 import { Separator } from './Separator';
 import { Button } from '@/components/ui/Button';
 import { SettingsPanel } from '@/components/ui/SettingsPanel';
@@ -67,6 +68,8 @@ export function GameBoard() {
   const pendingMillChoice = useGameStore((s) => s.pendingMillChoice);
   const pendingReplicaChoice = useGameStore((s) => s.pendingReplicaChoice);
   const pendingSniperChoice = useGameStore((s) => s.pendingSniperChoice);
+  const pendingCamuflajeSummon = useGameStore((s) => s.pendingCamuflajeSummon);
+  const pendingCamuflajeTutor = useGameStore((s) => s.pendingCamuflajeTutor);
   const sniperEquipTargeting = useTargetingStore((s) => s.sniperEquip);
   const responseWindow = useGameStore((s) => s.responseWindow);
   const { discardFromHand, respondWithAnnul, passResponse, closeResponseWindow, resolveShuffleChoice,
@@ -74,6 +77,7 @@ export function GameBoard() {
     discardRivalTalisman, tutorCopyFromZone, cancelCopyTutor,
     resolveSelfSummon, cancelSelfSummon, resolveFinalDraw, resolveAnnulRecover, resolveSelfRegroup,
     resolveMillChoice, resolveReplicaChoice, resolveSniperChoice, cancelSniperEquip,
+    resolveCamuflajeSummon, resolveCamuflajeTutor,
     playCard: playCardAction } = useGameActions();
   const pendingSwapChoice = useGameStore((s) => s.pendingSwapChoice);
   const pendingTypeChoice = useGameStore((s) => s.pendingTypeChoice);
@@ -871,6 +875,28 @@ export function GameBoard() {
             Cancelar (al Cementerio)
           </button>
         </div>
+      )}
+
+      {pendingCamuflajeSummon && (!isOnline || mySeat === pendingCamuflajeSummon.playerId) && (
+        <DeckSearchModal
+          isOpen
+          onClose={() => {}}
+          title="Cementerio — revive un Aliado Caudillo ≤3"
+          deck={players[pendingCamuflajeSummon.playerId].graveyard}
+          isEligible={(c) => c.tipo === 'aliado' && c.raza === 'Caudillo' && c.coste <= 3}
+          onPlay={(index) => resolveCamuflajeSummon(index, pendingCamuflajeSummon.playerId)}
+        />
+      )}
+
+      {pendingCamuflajeTutor && (!isOnline || mySeat === pendingCamuflajeTutor.playerId) && (
+        <DeckSearchModal
+          isOpen
+          onClose={() => resolveCamuflajeTutor(-1, pendingCamuflajeTutor.playerId)}
+          title="Castillo — busca un Talismán (Réplica)"
+          deck={players[pendingCamuflajeTutor.playerId].deck}
+          isEligible={(c) => c.tipo === 'talisman'}
+          onPlay={(index) => resolveCamuflajeTutor(index, pendingCamuflajeTutor.playerId)}
+        />
       )}
 
       {pendingReplicaChoice && (!isOnline || mySeat === pendingReplicaChoice.playerId) && (

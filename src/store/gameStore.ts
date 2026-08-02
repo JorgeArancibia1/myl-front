@@ -60,6 +60,7 @@ import {
   hasSniperReveal,
   hasExileAllAllies,
   isExileableByTalisman,
+  hasCamuflaje,
   totalAlliesInPlay,
   hasCombatExileAll,
   hasCombatExilePay,
@@ -413,6 +414,27 @@ function maybeTalismanBounceMill(card: Card, playerId: PlayerId): void {
 }
 
 /**
+ * 'camuflaje_revive_tutor' (Camuflaje): al jugar el talismán, abre la decisión de
+ * Réplica (pagar 1 para habilitar el tutor de Talismán). Tras decidir, se revive
+ * el Caudillo del Cementerio (obligatorio) y, si se pagó Réplica, el tutor.
+ */
+function maybeTalismanCamuflaje(card: Card, playerId: PlayerId): void {
+  if (!hasCamuflaje(card)) return;
+  const st = useGameStore.getState();
+  if (st.isGameOver) return;
+  const player = st.players[playerId];
+  const replica = effectiveReplicaCost(card, player);
+  if (replica != null && player.goldCount >= replica) {
+    useGameStore.setState({
+      pendingReplicaChoice: { playerId, cardName: card.nombre, cost: replica, kind: 'camuflaje' },
+    });
+  } else {
+    // Sin Réplica (o sin oro): revive directamente sin el tutor.
+    useGameStore.setState({ pendingCamuflajeSummon: { playerId, replicaPaid: false } });
+  }
+}
+
+/**
  * 'destierra_todos_aliados' (Cancha Rayada): al jugar el talismán, destierra
  * TODOS los Aliados en juego de ambos jugadores que puedan ser desterrados por
  * un talismán (respeta indesterrable/no_sale/solo_combate/inmunidad talismanes).
@@ -478,7 +500,7 @@ function maybeTalismanReplicaExileDraw(card: Card, playerId: PlayerId): void {
   const replica = effectiveReplicaCost(card, player);
   if (replica != null && player.goldCount >= replica) {
     useGameStore.setState({
-      pendingReplicaChoice: { playerId, cardName: card.nombre, cost: replica },
+      pendingReplicaChoice: { playerId, cardName: card.nombre, cost: replica, kind: 'escape' },
     });
     return;
   }
@@ -586,6 +608,8 @@ export function buildInitialState(
     pendingSelfRegroup: null,
     pendingMillChoice: null,
     pendingReplicaChoice: null,
+    pendingCamuflajeSummon: null,
+    pendingCamuflajeTutor: null,
     pendingSniperChoice: null,
     responseWindow: null,
     fxLightning: null,
@@ -879,6 +903,10 @@ interface GameActions {
    * efecto. Tras decidir, inicia el destierro+robo con 1 o 2 resoluciones.
    */
   resolveReplicaChoice: (accept: boolean, playerId: PlayerId) => void;
+  /** Camuflaje — paso 1: revive el Caudillo ≤3 elegido del Cementerio. */
+  resolveCamuflajeSummon: (deckIndex: number, playerId: PlayerId) => void;
+  /** Camuflaje — paso 2: busca el Talismán elegido del Castillo (deckIndex<0 = no elegir); baraja. */
+  resolveCamuflajeTutor: (deckIndex: number, playerId: PlayerId) => void;
   /**
    * 'destierra_aliado_roba' (Escape): destierra el Aliado objetivo y roba 1; si
    * quedan resoluciones (Réplica) y hay Aliados, continúa el targeting.
@@ -1104,6 +1132,8 @@ export const useGameStore = create<GameStore>()(
         if (card.tipo === 'talisman') maybeTalismanSniper(card, playerId);
         // 'destierra_todos_aliados' (Cancha Rayada): destierro masivo.
         if (card.tipo === 'talisman') maybeTalismanExileAll(card, playerId);
+        // 'camuflaje_revive_tutor' (Camuflaje): Réplica + revivir Caudillo + tutor.
+        if (card.tipo === 'talisman') maybeTalismanCamuflaje(card, playerId);
 
         // 'barajar_mano_roba8': al entrar en juego, su dueño decide si baraja
         // su mano en el Castillo y roba 8.
@@ -2450,6 +2480,7 @@ export const useGameStore = create<GameStore>()(
         if (card.tipo === 'talisman') maybeTalismanReplicaExileDraw(card, playerId);
         if (card.tipo === 'talisman') maybeTalismanSniper(card, playerId);
         if (card.tipo === 'talisman') maybeTalismanExileAll(card, playerId);
+        if (card.tipo === 'talisman') maybeTalismanCamuflaje(card, playerId);
 
         // 'barajar_mano_roba8': también aplica al entrar desde estas zonas.
         if (hasShuffleDraw(card)) {
@@ -3386,11 +3417,12 @@ export const useGameStore = create<GameStore>()(
       resolveReplicaChoice: (accept, playerId) => {
         const { pendingReplicaChoice, players } = get();
         if (!pendingReplicaChoice || pendingReplicaChoice.playerId !== playerId) return;
-        const { cardName, cost } = pendingReplicaChoice;
+        const { cardName, cost, kind } = pendingReplicaChoice;
         const player = players[playerId];
-        // Al aceptar, paga el Coste de Réplica (Oros de la Reserva → Oro Pagado).
-        if (accept && cost > 0 && player.goldCount >= cost) {
-          const paid = player.gold.slice(player.gold.length - cost);
+        // Réplica = flag opcional (no duplica): se paga y cada carta usa el flag.
+        const paid = accept && cost > 0 && player.goldCount >= cost;
+        if (paid) {
+          const gPaid = player.gold.slice(player.gold.length - cost);
           const remainingGold = player.gold.slice(0, player.gold.length - cost);
           set((s) => ({
             players: {
@@ -3398,7 +3430,7 @@ export const useGameStore = create<GameStore>()(
               [playerId]: {
                 ...s.players[playerId],
                 gold: remainingGold,
-                goldPaid: [...s.players[playerId].goldPaid, ...paid],
+                goldPaid: [...s.players[playerId].goldPaid, ...gPaid],
                 goldCount: remainingGold.length,
                 goldSpentThisTurn: true,
               },
@@ -3406,15 +3438,85 @@ export const useGameStore = create<GameStore>()(
           }));
         }
         set({ pendingReplicaChoice: null });
-        const resolutions = accept ? 2 : 1;
+        get().addLog(paid ? `${cardName}: Réplica pagada (${cost} Oros).` : `${cardName}: sin Réplica.`, 'action');
+        if (kind === 'camuflaje') {
+          set({ pendingCamuflajeSummon: { playerId, replicaPaid: paid } });
+        } else {
+          // Escape: el efecto (destierro + robo) — pendiente de revisar con Koke
+          // el nuevo modelo de Réplica (no duplicar). Por ahora, sin duplicar.
+          useTargetingStore.getState().startExileAllyDraw(playerId, 1);
+          get().addLog(`${cardName}: elige un Aliado en juego para desterrar.`, 'action');
+        }
+      },
+
+      resolveCamuflajeSummon: (deckIndex, playerId) => {
+        const { pendingCamuflajeSummon, players } = get();
+        if (!pendingCamuflajeSummon || pendingCamuflajeSummon.playerId !== playerId) return;
+        const player = players[playerId];
+        const card = player.graveyard[deckIndex];
+        if (!card || card.tipo !== 'aliado' || card.raza !== 'Caudillo' || card.coste > 3) return;
+        const played = { ...createCardInPlay(card), summonedThisTurn: true };
+        const replicaPaid = pendingCamuflajeSummon.replicaPaid;
+        set((s) => {
+          const p = s.players[playerId];
+          return {
+            pendingCamuflajeSummon: null,
+            players: {
+              ...s.players,
+              [playerId]: {
+                ...p,
+                graveyard: p.graveyard.filter((_, i) => i !== deckIndex),
+                defenseField: [...p.defenseField, played],
+              },
+            },
+          };
+        });
+        get().addLog(`${player.name} revive a ${card.nombre} desde su Cementerio sin pagar su Coste.`, 'action');
+        // Efectos de entrada del Aliado revivido.
+        maybeDrawOnEnter(played, playerId);
+        maybeTriggerPatriotaEnter(played, playerId);
+        maybeSelfSummon(played, playerId);
+        maybeRegroup3OnEnter(played, playerId);
+        runDeclarativeAbilities(played, playerId, 'entra_juego');
+        maybeBuffTargetOnEnter(played, playerId);
+        set((s) => ({ players: reapplyCostOneSuppression(s.players) }));
+        // Si se pagó Réplica, ofrece el tutor de Talismán.
+        if (replicaPaid && !get().isGameOver) {
+          set({ pendingCamuflajeTutor: { playerId } });
+        }
+        const { isOver, winnerId } = checkGameOver(get().players);
+        if (isOver) set({ isGameOver: true, winner: winnerId as PlayerId });
+      },
+
+      resolveCamuflajeTutor: (deckIndex, playerId) => {
+        const { pendingCamuflajeTutor, players } = get();
+        if (!pendingCamuflajeTutor || pendingCamuflajeTutor.playerId !== playerId) return;
+        const player = players[playerId];
+        const chosen = deckIndex >= 0 ? player.deck[deckIndex] : null;
+        set((s) => {
+          const p = s.players[playerId];
+          const restDeck = chosen ? p.deck.filter((_, i) => i !== deckIndex) : [...p.deck];
+          // "Buscar" siempre baraja el Mazo Castillo al terminar.
+          const shuffled = shuffleDeck(restDeck);
+          return {
+            pendingCamuflajeTutor: null,
+            players: {
+              ...s.players,
+              [playerId]: {
+                ...p,
+                deck: shuffled,
+                hand: chosen ? [...p.hand, createCardInPlay(chosen)] : p.hand,
+                life: shuffled.length,
+              },
+            },
+          };
+        });
         get().addLog(
-          accept
-            ? `${cardName}: Réplica pagada (${cost} Oros) — el efecto se resuelve dos veces.`
-            : `${cardName}: sin Réplica.`,
+          chosen
+            ? `${player.name} busca ${chosen.nombre} en su Castillo y lo pone en su Mano (baraja).`
+            : `${player.name} no busca ningún Talismán (baraja su Castillo).`,
           'action',
         );
-        useTargetingStore.getState().startExileAllyDraw(playerId, resolutions);
-        get().addLog(`${cardName}: elige un Aliado en juego para desterrar.`, 'action');
       },
 
       exileAllyDrawTarget: (targetInstanceId, targetOwnerId, playerId) => {

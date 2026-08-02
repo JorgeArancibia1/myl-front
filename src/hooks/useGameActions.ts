@@ -51,6 +51,8 @@ export function useGameActions() {
   const resolveSelfRegroup = useGameStore((s) => s.resolveSelfRegroup);
   const resolveMillChoice = useGameStore((s) => s.resolveMillChoice);
   const resolveReplicaChoice = useGameStore((s) => s.resolveReplicaChoice);
+  const resolveCamuflajeSummon = useGameStore((s) => s.resolveCamuflajeSummon);
+  const resolveCamuflajeTutor = useGameStore((s) => s.resolveCamuflajeTutor);
   const exileAllyDrawTarget = useGameStore((s) => s.exileAllyDrawTarget);
   const resolveSniperChoice = useGameStore((s) => s.resolveSniperChoice);
   const resolveSniperEquip = useGameStore((s) => s.resolveSniperEquip);
@@ -160,6 +162,8 @@ export function useGameActions() {
     resolveSelfRegroup: ownerGated<[boolean]>(resolveSelfRegroup),
     resolveMillChoice: ownerGated<[PlayerId]>(resolveMillChoice),
     resolveReplicaChoice: ownerGated<[boolean]>(resolveReplicaChoice),
+    resolveCamuflajeSummon: ownerGated<[number]>(resolveCamuflajeSummon),
+    resolveCamuflajeTutor: ownerGated<[number]>(resolveCamuflajeTutor),
     exileAllyDrawTarget: guarded(exileAllyDrawTarget),
     resolveSniperChoice: ownerGated<['aliado' | 'totem' | 'arma']>(resolveSniperChoice),
     resolveSniperEquip: guarded(resolveSniperEquip),
