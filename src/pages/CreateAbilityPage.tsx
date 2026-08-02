@@ -97,6 +97,10 @@ export function CreateAbilityPage() {
   const [playZoneExile, setPlayZoneExile] = useState(true);
   // Efecto 'coste_gratis_condicional': mínimo de Oros para jugar gratis.
   const [freeMinGold, setFreeMinGold] = useState(5);
+  // Efecto 'destierro': ámbito, masivo/individual y tipo objetivo.
+  const [exileScope, setExileScope] = useState<'self' | 'opponent' | 'both'>('both');
+  const [exileMass, setExileMass] = useState(false);
+  const [exileTargetTipo, setExileTargetTipo] = useState<CardType | null>('aliado');
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
@@ -122,13 +126,14 @@ export function CreateAbilityPage() {
   const isBuffObj = effectKind === 'buff_objetivo';
   const isPlayZone = effectKind === 'jugar_desde_zona';
   const isFreeCost = effectKind === 'coste_gratis_condicional';
+  const isExile = effectKind === 'destierro';
   // Efectos pasivos (propiedades): momento/modo irrelevantes.
   const isPassive = isPlayZone || isFreeCost;
   const usesTargetFilters = effectKind === 'invocar' || isEnablePlay;
-  const needsFrom = !isRecoverSelf && !isBuffForce && !isDestroy && !isBuffObj && !isPassive;
-  const needsTo = !isEnablePlay && !isBuffForce && !isDestroy && !isBuffObj && !isPassive;
+  const needsFrom = !isRecoverSelf && !isBuffForce && !isDestroy && !isBuffObj && !isPassive && !isExile;
+  const needsTo = !isEnablePlay && !isBuffForce && !isDestroy && !isBuffObj && !isPassive && !isExile;
   const zonesOk =
-    isBuffForce || isDestroy || isBuffObj || isFreeCost
+    isBuffForce || isDestroy || isBuffObj || isFreeCost || isExile
       ? true
       : isPlayZone
       ? playZoneFrom !== null
@@ -186,6 +191,12 @@ export function CreateAbilityPage() {
     }
     if (effectKind === 'coste_gratis_condicional') {
       return { ...base, effect: { kind: 'coste_gratis_condicional', minGold: Math.max(0, freeMinGold) } };
+    }
+    if (effectKind === 'destierro') {
+      return {
+        ...base,
+        effect: { kind: 'destierro', scope: exileScope, mass: exileMass, targetTipo: exileTargetTipo },
+      };
     }
     if (effectKind === 'invocar') {
       return {
@@ -274,6 +285,9 @@ export function CreateAbilityPage() {
       setPlayZoneFrom('graveyard');
       setPlayZoneExile(true);
       setFreeMinGold(5);
+      setExileScope('both');
+      setExileMass(false);
+      setExileTargetTipo('aliado');
     } catch (err) {
       const text =
         err instanceof ApiError
@@ -332,6 +346,12 @@ export function CreateAbilityPage() {
     if (isFreeCost) {
       return `Si controlas ${Math.max(0, freeMinGold)} o más Oros (Reserva + Oro Pagado), puedes jugar esta carta sin pagar su Coste.`;
     }
+    if (isExile) {
+      const queTipo = exileTargetTipo ? `${exileTargetTipo}(s)` : 'carta(s)';
+      const deQuien =
+        exileScope === 'opponent' ? 'del rival' : exileScope === 'self' ? 'propias' : 'de ambos jugadores';
+      return `${when}: ${modeText} desterrar ${exileMass ? `TODAS las ${queTipo} en juego` : `un(a) ${queTipo} en juego`} ${deQuien} (respeta protecciones/inmunidad a talismanes).`;
+    }
     if (isEnablePlay) {
       const filtro = [
         summonRaza.trim() ? `raza ${summonRaza.trim()}` : null,
@@ -367,6 +387,7 @@ export function CreateAbilityPage() {
     buffTargetRaza, buffCountRaza, buffAmount, buffScope, buffExcludeSelf,
     destroyTargetTipo, destroyScope,
     isBuffObj, isPlayZone, isFreeCost, buffObjAmount, buffObjScope, playZoneFrom, playZoneExile, freeMinGold,
+    isExile, exileScope, exileMass, exileTargetTipo,
   ]);
 
   return (
@@ -606,6 +627,47 @@ export function CreateAbilityPage() {
                     ]}
                   />
                 </div>
+              </>
+            )}
+
+            {isExile && (
+              <>
+                <p className="text-[11px] text-slate-400">
+                  Destierra carta(s) EN JUEGO → zona de Destierro. Marca "masivo" para desterrar todas
+                  las que cumplan el filtro; si no, el jugador elige una (targeting). Respeta
+                  Indesterrable / "no sale del juego" / "solo sale por combate" e Inmunidad a Talismanes.
+                  Úsalo en "Al entrar en juego" (talismanes) o como activable.
+                </p>
+                <div>
+                  <label className="text-[10px] uppercase tracking-wide text-slate-500 block mb-1.5">
+                    Tipo a desterrar (vacío = cualquier carta en línea)
+                  </label>
+                  <LabelPicker
+                    tone="emerald"
+                    value={exileTargetTipo}
+                    onChange={(v) => setExileTargetTipo(v === exileTargetTipo ? null : v)}
+                    options={CARD_TYPES.map((t) => ({ value: t, label: t }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-wide text-slate-500 block mb-1.5">
+                    ¿De quién?
+                  </label>
+                  <LabelPicker
+                    tone="amber"
+                    value={exileScope}
+                    onChange={setExileScope}
+                    options={[
+                      { value: 'both', label: 'De cualquier jugador' },
+                      { value: 'opponent', label: 'Solo del rival' },
+                      { value: 'self', label: 'Solo propias' },
+                    ]}
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-xs text-slate-300 select-none rounded-md px-3 py-2 border border-slate-700 bg-slate-800/60 cursor-pointer">
+                  <input type="checkbox" checked={exileMass} onChange={(e) => setExileMass(e.target.checked)} />
+                  Masivo: desterrar TODAS las que cumplan (si no, se elige una)
+                </label>
               </>
             )}
 

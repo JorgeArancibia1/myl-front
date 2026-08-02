@@ -620,6 +620,17 @@ export function isExileableByTalisman(c: CardInPlay, owner: PlayerState): boolea
   return isExileableAlly(c) && !hasInmunidadTalismanesEffective(c, owner);
 }
 
+/**
+ * Guard genérico del efecto declarativo 'destierro' (cualquier tipo de carta):
+ * respeta indesterrable / no_sale_del_juego / solo_sale_combate y, si la fuente
+ * es un Talismán, la Inmunidad a Talismanes de `owner`.
+ */
+export function canBeExiled(c: CardInPlay, owner: PlayerState, byTalisman: boolean): boolean {
+  if (hasIndesterrable(c) || cannotLeavePlay(c) || hasCombatOnlyExit(c)) return false;
+  if (byTalisman && hasInmunidadTalismanesEffective(c, owner)) return false;
+  return true;
+}
+
 /** ¿Existe algún Aliado desterrable en juego (ambos jugadores)? */
 export function exileableAllyExists(players: Record<PlayerId, PlayerState>): boolean {
   return Object.values(players).some((p) =>

@@ -50,7 +50,7 @@ export function AllySlot({ ally, weapons, playerId, isOpponent = false, size = '
   const [deckSearchOpen, setDeckSearchOpen] = useState(false);
   const { equipWeapon, summonCaudilloFromDeck, weakenAlly, millDestroyAlly, swapControl,
     playRecycledTalisman, activateMillGold, chooseRaceSuppress, equipWeaponFromZone,
-    destroyNonGoldCard, exileTargetCard, destroyDeclarativeTarget, buffTargetAlly, exileAllyDrawTarget, resolveSniperEquip, activateDeclarativeAbility, summonDeclarativeFromZone } = useGameActions();
+    destroyNonGoldCard, exileTargetCard, destroyDeclarativeTarget, buffTargetAlly, exileAllyDrawTarget, resolveSniperEquip, exileDeclTarget, activateDeclarativeAbility, summonDeclarativeFromZone } = useGameActions();
   const [recycleOpen, setRecycleOpen] = useState(false);
   const [razaPickerOpen, setRazaPickerOpen] = useState(false);
   // Habilidad declarativa 'invocar' con selección en curso (o null).
@@ -91,6 +91,8 @@ export function AllySlot({ ally, weapons, playerId, isOpponent = false, size = '
   const buffTargeting = useTargetingStore((s) => s.buffTarget);
   // 'destierra_aliado_roba' (Escape): elige un Aliado para desterrar + robar.
   const exileAllyDrawTargeting = useTargetingStore((s) => s.exileAllyDraw);
+  // Efecto declarativo 'destierro' individual (constructor).
+  const declExileTargeting = useTargetingStore((s) => s.declExile);
   // Francotirador (arma normal encontrada): elige a qué Aliado propio equiparla.
   const sniperEquipTargetingRaw = useTargetingStore((s) => s.sniperEquip);
   const sniperEquipTargeting =
@@ -99,7 +101,7 @@ export function AllySlot({ ally, weapons, playerId, isOpponent = false, size = '
       : null;
   const cancelTargeting = useTargetingStore((s) => s.cancel);
   const anyTargeting =
-    weakenTargeting ?? destroyTargeting ?? swapTargeting ?? equipTargeting ?? destroyAnyTargeting ?? exileAnyTargeting ?? declDestroyTargeting ?? buffTargeting ?? exileAllyDrawTargeting ?? sniperEquipTargeting;
+    weakenTargeting ?? destroyTargeting ?? swapTargeting ?? equipTargeting ?? destroyAnyTargeting ?? exileAnyTargeting ?? declDestroyTargeting ?? buffTargeting ?? exileAllyDrawTargeting ?? sniperEquipTargeting ?? declExileTargeting;
 
   const isMyTurn = turn.currentPlayer === playerId && !isOpponent;
 
@@ -225,6 +227,15 @@ export function AllySlot({ ally, weapons, playerId, isOpponent = false, size = '
                 onUse: () => useTargetingStore.getState().startDeclDestroy(ally.instanceId, playerId, code),
               };
             }
+            if (def.effect.kind === 'destierro' && !def.effect.mass) {
+              const e = def.effect;
+              return {
+                label: `${EFFECT_LABELS.destierro}${e.targetTipo ? ` (${e.targetTipo})` : ''}${costTag}`,
+                enabled: usable,
+                onUse: () =>
+                  useTargetingStore.getState().startDeclExile(playerId, e.scope, e.targetTipo, ally.tipo === 'talisman'),
+              };
+            }
             return {
               label: `${EFFECT_LABELS.mover}${costTag}`,
               enabled: usable,
@@ -295,7 +306,7 @@ export function AllySlot({ ally, weapons, playerId, isOpponent = false, size = '
               className={`absolute -inset-1 rounded-xl ring-2 animate-pulse pointer-events-none z-30 ${
                 swapTargeting || equipTargeting || sniperEquipTargeting
                   ? 'ring-yellow-400'
-                  : exileAnyTargeting
+                  : exileAnyTargeting || declExileTargeting
                   ? 'ring-purple-400'
                   : buffTargeting
                   ? 'ring-emerald-400'
@@ -381,6 +392,8 @@ export function AllySlot({ ally, weapons, playerId, isOpponent = false, size = '
                 ? () => exileAllyDrawTarget(ally.instanceId, playerId, exileAllyDrawTargeting.playerId)
                 : sniperEquipTargeting
                 ? () => resolveSniperEquip(ally.instanceId, playerId)
+                : declExileTargeting
+                ? () => exileDeclTarget(ally.instanceId, playerId, declExileTargeting.playerId)
                 : () => setDetailCard(ally)
             }
             dragPayload={

@@ -83,6 +83,23 @@ export function getDeclarativeForceBuff(
 }
 
 /**
+ * Efecto declarativo `destierro` de una carta que se dispara en `moment`
+ * (típicamente `entra_juego` para talismanes, o activable). Devuelve sus
+ * parámetros (scope/mass/targetTipo) o null.
+ */
+export function getDeclExile(
+  card: Card,
+  moment: import('@/types/ability.types').AbilityMoment,
+): { scope: 'self' | 'opponent' | 'both'; mass: boolean; targetTipo: import('@/types/card.types').CardType | null; code: string } | null {
+  for (const { code, def } of getDeclarativeAbilitiesOf(card)) {
+    if (def.effect.kind === 'destierro' && def.moments.includes(moment)) {
+      return { scope: def.effect.scope, mass: def.effect.mass, targetTipo: def.effect.targetTipo, code };
+    }
+  }
+  return null;
+}
+
+/**
  * Efecto declarativo `jugar_desde_zona` de una carta (propiedad pasiva): permite
  * jugarla desde la zona `from`; si `thenExile`, se destierra tras jugarse así.
  */

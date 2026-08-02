@@ -81,7 +81,8 @@ export type AbilityEffectKind =
   | 'destruir'
   | 'buff_objetivo'
   | 'jugar_desde_zona'
-  | 'coste_gratis_condicional';
+  | 'coste_gratis_condicional'
+  | 'destierro';
 
 export const EFFECT_LABELS: Record<AbilityEffectKind, string> = {
   mover: 'Mover / Barajar cartas',
@@ -93,6 +94,7 @@ export const EFFECT_LABELS: Record<AbilityEffectKind, string> = {
   buff_objetivo: 'Potenciar un Aliado objetivo (+N Fuerza hasta Fase Final)',
   jugar_desde_zona: 'Poder jugar esta carta desde otra zona',
   coste_gratis_condicional: 'Jugar gratis si controlas X Oros',
+  destierro: 'Desterrar cartas en juego (una o todas)',
 };
 
 /**
@@ -253,6 +255,21 @@ export interface FreeCostEffect {
   minGold: number;
 }
 
+/**
+ * Efecto "destierro": destierra carta(s) EN JUEGO → zona de Destierro. Con
+ * `mass` destierra TODAS las que cumplan el filtro en el `scope` (automático);
+ * sin `mass`, el jugador elige UNA (targeting). `targetTipo` filtra el tipo
+ * (null = cualquier carta en línea). Respeta indesterrable / no_sale_del_juego /
+ * solo_sale_combate y, si la fuente es Talismán, la Inmunidad a Talismanes.
+ * Ej. Cancha Rayada: mass, scope both, targetTipo aliado.
+ */
+export interface ExileEffect {
+  kind: 'destierro';
+  scope: 'self' | 'opponent' | 'both';
+  mass: boolean;
+  targetTipo: import('./card.types').CardType | null;
+}
+
 export type AbilityEffect =
   | MoveEffect
   | SummonEffect
@@ -262,7 +279,8 @@ export type AbilityEffect =
   | DestroyEffect
   | BuffTargetEffect
   | PlayFromZoneEffect
-  | FreeCostEffect;
+  | FreeCostEffect
+  | ExileEffect;
 
 /** Receta declarativa completa de una habilidad. */
 export interface AbilityDefinition {

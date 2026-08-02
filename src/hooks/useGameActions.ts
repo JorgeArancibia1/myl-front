@@ -51,6 +51,7 @@ export function useGameActions() {
   const resolveSelfRegroup = useGameStore((s) => s.resolveSelfRegroup);
   const resolveMillChoice = useGameStore((s) => s.resolveMillChoice);
   const resolveReplicaChoice = useGameStore((s) => s.resolveReplicaChoice);
+  const exileDeclTarget = useGameStore((s) => s.exileDeclTarget);
   const resolveCamuflajeSummon = useGameStore((s) => s.resolveCamuflajeSummon);
   const resolveCamuflajeTutor = useGameStore((s) => s.resolveCamuflajeTutor);
   const exileAllyDrawTarget = useGameStore((s) => s.exileAllyDrawTarget);
@@ -162,6 +163,7 @@ export function useGameActions() {
     resolveSelfRegroup: ownerGated<[boolean]>(resolveSelfRegroup),
     resolveMillChoice: ownerGated<[PlayerId]>(resolveMillChoice),
     resolveReplicaChoice: ownerGated<[boolean]>(resolveReplicaChoice),
+    exileDeclTarget: guarded(exileDeclTarget),
     resolveCamuflajeSummon: ownerGated<[number]>(resolveCamuflajeSummon),
     resolveCamuflajeTutor: ownerGated<[number]>(resolveCamuflajeTutor),
     exileAllyDrawTarget: guarded(exileAllyDrawTarget),

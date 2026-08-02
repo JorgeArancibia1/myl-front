@@ -11,6 +11,7 @@ import {
   getAnnulRecover,
   getFaseFinalSelfMove,
   getDeclBuffTargetOnEnter,
+  getDeclExile,
 } from '@/utils/abilityRegistry';
 import {
   runAbilityDefinition,
@@ -61,6 +62,7 @@ import {
   hasExileAllAllies,
   isExileableByTalisman,
   hasCamuflaje,
+  canBeExiled,
   totalAlliesInPlay,
   hasCombatExileAll,
   hasCombatExilePay,
@@ -536,6 +538,70 @@ function maybeBuffTargetOnEnter(card: Card, playerId: PlayerId): void {
     .addLog(`${card.nombre}: elige un Aliado para darle +${buff.amount} de Fuerza.`, 'action');
 }
 
+/**
+ * Efecto declarativo `destierro` al entrar en juego (constructor): mass = destierra
+ * todas las cartas del filtro/ámbito automáticamente; individual = inicia el
+ * targeting para elegir una. Respeta protecciones e inmunidad a talismanes.
+ */
+function maybeDeclExileOnEnter(card: Card, playerId: PlayerId): void {
+  const ex = getDeclExile(card, 'entra_juego');
+  if (!ex) return;
+  const st = useGameStore.getState();
+  if (st.isGameOver) return;
+  const byTalisman = card.tipo === 'talisman';
+  const opponentId: PlayerId = playerId === 'player' ? 'opponent' : 'player';
+  const pids: PlayerId[] =
+    ex.scope === 'self' ? [playerId] : ex.scope === 'opponent' ? [opponentId] : [playerId, opponentId];
+
+  if (!ex.mass) {
+    // Individual: hay que elegir un objetivo válido (targeting).
+    const anyTarget = pids.some((pid) =>
+      [...st.players[pid].defenseField, ...st.players[pid].attackField].some(
+        (c) => (!ex.targetTipo || c.tipo === ex.targetTipo) && canBeExiled(c, st.players[pid], byTalisman),
+      ),
+    );
+    if (!anyTarget) {
+      useGameStore.getState().addLog(`${card.nombre}: no hay objetivo válido para desterrar.`, 'system');
+      return;
+    }
+    useTargetingStore.getState().startDeclExile(playerId, ex.scope, ex.targetTipo, byTalisman);
+    useGameStore.getState().addLog(`${card.nombre}: elige una carta en juego para desterrar.`, 'action');
+    return;
+  }
+
+  // Masivo: destierra todas las que cumplan filtro + protecciones.
+  let exiled = 0;
+  const patched: Record<string, PlayerState> = {};
+  for (const pid of pids) {
+    const p = st.players[pid];
+    const toExile = [...p.defenseField, ...p.attackField].filter(
+      (c) => (!ex.targetTipo || c.tipo === ex.targetTipo) && canBeExiled(c, p, byTalisman),
+    );
+    if (toExile.length === 0) continue;
+    exiled += toExile.length;
+    const ids = new Set(toExile.map((c) => c.instanceId));
+    const orphanWeapons = toExile.flatMap((c) => weaponsOf(p, c.instanceId));
+    const restWeapons = { ...p.equippedWeapons };
+    for (const id of ids) delete restWeapons[id];
+    const tempBonuses = { ...p.weaponTempBonuses };
+    for (const id of ids) delete tempBonuses[id];
+    patched[pid] = {
+      ...p,
+      defenseField: p.defenseField.filter((c) => !ids.has(c.instanceId)),
+      attackField: p.attackField.filter((c) => !ids.has(c.instanceId)),
+      exile: [...p.exile, ...toExile],
+      graveyard: [...p.graveyard, ...orphanWeapons],
+      equippedWeapons: restWeapons,
+      weakenedAllies: p.weakenedAllies.filter((id) => !ids.has(id)),
+      weaponTempBonuses: tempBonuses,
+    };
+  }
+  if (exiled > 0) {
+    useGameStore.setState({ players: { ...st.players, ...patched } });
+    useGameStore.getState().addLog(`${card.nombre}: ${exiled} carta(s) son desterradas.`, 'combat');
+  }
+}
+
 function maybeSelfSummon(card: Card, playerId: PlayerId): void {
   if (card.tipo !== 'aliado' || !hasSelfSummonFromDeck(card)) return;
   const st = useGameStore.getState();
@@ -903,6 +969,8 @@ interface GameActions {
    * efecto. Tras decidir, inicia el destierro+robo con 1 o 2 resoluciones.
    */
   resolveReplicaChoice: (accept: boolean, playerId: PlayerId) => void;
+  /** Efecto declarativo 'destierro' individual: destierra la carta objetivo elegida. */
+  exileDeclTarget: (targetInstanceId: string, targetOwnerId: PlayerId, playerId: PlayerId) => void;
   /** Camuflaje — paso 1: revive el Caudillo ≤3 elegido del Cementerio. */
   resolveCamuflajeSummon: (deckIndex: number, playerId: PlayerId) => void;
   /** Camuflaje — paso 2: busca el Talismán elegido del Castillo (deckIndex<0 = no elegir); baraja. */
@@ -1182,6 +1250,7 @@ export const useGameStore = create<GameStore>()(
         maybeRegroup3OnEnter(card, playerId);
         runDeclarativeAbilities(card, playerId, 'entra_juego');
         maybeBuffTargetOnEnter(card, playerId);
+        maybeDeclExileOnEnter(card, playerId);
 
         // 'busca_copia_entra' (Escudo Nacional Mercenario): al entrar, si hay
         // copias de esta misma carta en el Castillo o Cementerio, abrir la
@@ -2493,6 +2562,7 @@ export const useGameStore = create<GameStore>()(
         maybeRegroup3OnEnter(card, playerId);
         runDeclarativeAbilities(card, playerId, 'entra_juego');
         maybeBuffTargetOnEnter(card, playerId);
+        maybeDeclExileOnEnter(card, playerId);
         set((s) => ({ players: reapplyCostOneSuppression(s.players) }));
       },
 
@@ -3447,6 +3517,48 @@ export const useGameStore = create<GameStore>()(
           useTargetingStore.getState().startExileAllyDraw(playerId, 1);
           get().addLog(`${cardName}: elige un Aliado en juego para desterrar.`, 'action');
         }
+      },
+
+      exileDeclTarget: (targetInstanceId, targetOwnerId, playerId) => {
+        const { players, isGameOver } = get();
+        if (isGameOver) return;
+        const targeting = useTargetingStore.getState().declExile;
+        if (!targeting || targeting.playerId !== playerId) return;
+        // Ámbito del objetivo.
+        if (targeting.scope === 'opponent' && targetOwnerId === playerId) return;
+        if (targeting.scope === 'self' && targetOwnerId !== playerId) return;
+        const targetOwner = players[targetOwnerId];
+        const target = [...targetOwner.defenseField, ...targetOwner.attackField].find(
+          (c) =>
+            c.instanceId === targetInstanceId &&
+            (!targeting.targetTipo || c.tipo === targeting.targetTipo),
+        );
+        if (!target || !canBeExiled(target, targetOwner, targeting.byTalisman)) {
+          get().addLog('Esa carta no puede ser desterrada.', 'error');
+          return;
+        }
+        set((s) => {
+          const o = s.players[targetOwnerId];
+          const weapons = weaponsOf(o, targetInstanceId);
+          const restWeapons = { ...o.equippedWeapons };
+          delete restWeapons[targetInstanceId];
+          return {
+            players: {
+              ...s.players,
+              [targetOwnerId]: {
+                ...o,
+                defenseField: o.defenseField.filter((c) => c.instanceId !== targetInstanceId),
+                attackField: o.attackField.filter((c) => c.instanceId !== targetInstanceId),
+                exile: [...o.exile, target],
+                graveyard: [...o.graveyard, ...weapons],
+                equippedWeapons: restWeapons,
+                weakenedAllies: o.weakenedAllies.filter((id) => id !== targetInstanceId),
+              },
+            },
+          };
+        });
+        useTargetingStore.getState().cancel();
+        get().addLog(`${players[playerId].name} destierra a ${target.nombre}.`, 'combat');
       },
 
       resolveCamuflajeSummon: (deckIndex, playerId) => {

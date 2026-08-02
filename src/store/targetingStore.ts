@@ -29,6 +29,13 @@ interface TargetingState {
   exileAllyDraw: { playerId: PlayerId; remaining: number } | null;
   /** Active "equip found weapon to an ally" targeting (Francotirador, arma normal). */
   sniperEquip: { playerId: PlayerId; arma: CardInPlay } | null;
+  /** Active declarative "destierro" targeting (constructor): exile one card in a line. */
+  declExile: {
+    playerId: PlayerId;
+    scope: 'self' | 'opponent' | 'both';
+    targetTipo: import('@/types/card.types').CardType | null;
+    byTalisman: boolean;
+  } | null;
   startWeaken: (sourceInstanceId: string, playerId: PlayerId) => void;
   startDestroy: (sourceInstanceId: string, playerId: PlayerId) => void;
   startSwap: (sourceInstanceId: string, playerId: PlayerId) => void;
@@ -39,10 +46,16 @@ interface TargetingState {
   startBuffTarget: (playerId: PlayerId, amount: number, scope: 'self' | 'opponent' | 'both') => void;
   startExileAllyDraw: (playerId: PlayerId, remaining: number) => void;
   startSniperEquip: (playerId: PlayerId, arma: CardInPlay) => void;
+  startDeclExile: (
+    playerId: PlayerId,
+    scope: 'self' | 'opponent' | 'both',
+    targetTipo: import('@/types/card.types').CardType | null,
+    byTalisman: boolean,
+  ) => void;
   cancel: () => void;
 }
 
-const NONE = { weaken: null, destroy: null, swap: null, equip: null, destroyAny: null, exileAny: null, declDestroy: null, buffTarget: null, exileAllyDraw: null, sniperEquip: null };
+const NONE = { weaken: null, destroy: null, swap: null, equip: null, destroyAny: null, exileAny: null, declDestroy: null, buffTarget: null, exileAllyDraw: null, sniperEquip: null, declExile: null };
 
 export const useTargetingStore = create<TargetingState>((set) => ({
   ...NONE,
@@ -63,5 +76,7 @@ export const useTargetingStore = create<TargetingState>((set) => ({
   startBuffTarget: (playerId, amount, scope) => set({ ...NONE, buffTarget: { playerId, amount, scope } }),
   startExileAllyDraw: (playerId, remaining) => set({ ...NONE, exileAllyDraw: { playerId, remaining } }),
   startSniperEquip: (playerId, arma) => set({ ...NONE, sniperEquip: { playerId, arma } }),
+  startDeclExile: (playerId, scope, targetTipo, byTalisman) =>
+    set({ ...NONE, declExile: { playerId, scope, targetTipo, byTalisman } }),
   cancel: () => set({ ...NONE }),
 }));
